@@ -250,6 +250,19 @@ class FetchNewEmailsJob implements ShouldQueue
             }
 
             $data = $response->json();
+
+            // Skip draft messages. When GenerateDraftJob pushes a draft to
+            // Gmail via drafts.create, it appears in the thread with a DRAFT
+            // label. Without this guard the next fetch cycle stores it as a
+            // regular EmailMessage and it shows in the conversation before
+            // the user has approved and sent it. Once the user clicks
+            // "Send via Gmail", Gmail removes the DRAFT label and adds SENT,
+            // so the reply appears in the conversation naturally after that.
+            $labelIds = $data['labelIds'] ?? [];
+            if (in_array('DRAFT', $labelIds)) {
+                return;
+            }
+
             $headers = collect($data['payload']['headers'] ?? []);
 
             $subject = $headers->firstWhere('name', 'Subject')['value'] ?? '(No Subject)';

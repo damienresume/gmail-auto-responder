@@ -64,13 +64,13 @@ export default function ThreadsPage() {
     fetchThreads(true);
   }, [fetchThreads]);
 
-  // Auto-refresh every 10 seconds so new emails appear automatically.
-  // This is especially important when the user first connects Gmail
-  // and the database is empty — the scheduler fetches emails in the
-  // background and the dashboard picks them up on the next poll.
+  // Auto-refresh every 5 seconds so new emails and status changes
+  // appear near-instantly. The short interval keeps the dashboard
+  // responsive without noticeable load — each poll is a single
+  // lightweight API call that returns only classified threads.
   // showLoading=false so the refresh is silent (no flicker).
   useEffect(() => {
-    const interval = setInterval(() => fetchThreads(false), 10000);
+    const interval = setInterval(() => fetchThreads(false), 5000);
     return () => clearInterval(interval);
   }, [fetchThreads]);
 

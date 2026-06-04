@@ -122,16 +122,23 @@ class EmailThread extends Model
     }
 
     /**
-     * The latest draft reply for this thread.
+     * The latest active draft reply for this thread.
      *
      * WHY hasOne with latestOfMany: A thread can have multiple draft
      * revisions, but the dashboard always shows the most recent one.
      * hasOne()->latestOfMany() returns only the newest draft without
      * loading all revisions into memory.
+     *
+     * WHY exclude discarded: Discarded drafts are rejected by the user
+     * and should not appear in the thread detail view. Without this
+     * filter, discarding a draft would still show it in the UI because
+     * latestOfMany would pick it up as the most recent record.
      */
     public function latestDraft(): HasOne
     {
-        return $this->hasOne(Draft::class)->latestOfMany();
+        return $this->hasOne(Draft::class)
+            ->whereNotIn('status', [Draft::STATUS_DISCARDED])
+            ->latestOfMany();
     }
 
     /**

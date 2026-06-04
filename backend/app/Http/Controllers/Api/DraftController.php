@@ -185,7 +185,16 @@ class DraftController extends Controller
      * PURPOSE:
      * The user reviews the LLM's reply and decides it's not appropriate.
      * Discarding marks it as rejected so it disappears from the review
-     * queue. The draft data is preserved for audit purposes.
+     * queue and also deletes the corresponding draft from the user's
+     * Gmail Drafts folder (if one was created). The draft record is
+     * preserved in our database for audit purposes.
+     *
+     * WHY delete from Gmail:
+     * When GenerateDraftJob creates a draft, it pushes a copy to the
+     * user's Gmail Drafts folder via drafts.create. If the user discards
+     * the draft in our dashboard but we don't remove the Gmail copy,
+     * they'll see a stale draft sitting in Gmail forever. Deleting it
+     * keeps the two systems in sync.
      */
     public function discard(Request $request, int $id): JsonResponse
     {
@@ -200,6 +209,12 @@ class DraftController extends Controller
                 'message' => 'Draft cannot be discarded from status: ' . $draft->status,
             ], 409);
         }
+
+        // Delete the draft from the user's Gmail Drafts folder.
+        // This is best-effort: if the Gmail API call fails (draft already
+        // deleted, token expired, etc.), we still keep our DB record as
+        // discarded. The user's dashboard is the source of truth.
+        $this->deleteGmailDraft($draft);
 
         return response()->json($draft->fresh());
     }
@@ -219,6 +234,59 @@ class DraftController extends Controller
                 $q->where('user_id', $request->user()->id);
             })
             ->first();
+    }
+
+    /**
+     * Delete a draft from the user's Gmail Drafts folder.
+     *
+     * PURPOSE:
+     * Called when the user discards a draft from the dashboard. Removes
+     * the corresponding Gmail draft so the user doesn't see stale drafts
+     * in their Gmail inbox.
+     *
+     * WHY best-effort (no failure propagation):
+     * The Gmail draft is a convenience copy. Our database is the source
+     * of truth. If deletion fails (token expired, draft already gone,
+     * network issue), the discard still succeeds in our system. The Gmail
+     * draft will either be cleaned up on next token refresh or the user
+     * can manually delete it from Gmail.
+     */
+    private function deleteGmailDraft(Draft $draft): void
+    {
+        if (!$draft->gmail_draft_id) {
+            return;
+        }
+
+        try {
+            $account = $draft->emailThread->gmailAccount;
+
+            if (!$account || !$account->is_active) {
+                return;
+            }
+
+            $response = Http::withToken($account->access_token)
+                ->timeout(10)
+                ->delete("https://gmail.googleapis.com/gmail/v1/users/me/drafts/{$draft->gmail_draft_id}");
+
+            if ($response->successful() || $response->status() === 404) {
+                // 204 = deleted successfully, 404 = already gone. Both are fine.
+                Log::info('Gmail draft deleted on discard', [
+                    'draft_id' => $draft->id,
+                    'gmail_draft_id' => $draft->gmail_draft_id,
+                ]);
+            } else {
+                Log::warning('Failed to delete Gmail draft on discard', [
+                    'draft_id' => $draft->id,
+                    'gmail_draft_id' => $draft->gmail_draft_id,
+                    'status' => $response->status(),
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Gmail draft deletion exception on discard', [
+                'draft_id' => $draft->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
