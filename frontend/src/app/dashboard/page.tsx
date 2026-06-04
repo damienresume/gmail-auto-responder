@@ -139,7 +139,10 @@ export default function ThreadsPage() {
                     </div>
                     <p className="text-sm text-gray-900 truncate">{thread.subject}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {new Date(thread.created_at).toLocaleDateString()}
+                      {new Date((thread as Record<string, string>).last_message_at || thread.updated_at).toLocaleDateString(undefined, {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
                     </p>
                   </div>
 

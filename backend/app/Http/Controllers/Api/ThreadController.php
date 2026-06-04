@@ -54,10 +54,19 @@ class ThreadController extends Controller
     {
         $query = EmailThread::query()
             ->whereHas('gmailAccount', function ($q) use ($request) {
-                // Security: Only show threads from the authenticated user's accounts.
                 $q->where('user_id', $request->user()->id);
             })
-            ->with(['latestDraft', 'gmailAccount:id,gmail_email']);
+            ->with(['latestDraft', 'gmailAccount:id,gmail_email'])
+            // Add the most recent message's received_at as last_message_at
+            // so the frontend can display the actual email date, not our
+            // processing date.
+            ->addSelect(['*',
+                \Illuminate\Support\Facades\DB::raw('(
+                    SELECT received_at FROM email_messages
+                    WHERE email_messages.email_thread_id = email_threads.id
+                    ORDER BY received_at DESC LIMIT 1
+                ) as last_message_at'),
+            ]);
 
         // Optional filter: show only threads with a specific classification.
         // Used by dashboard tabs (Interested, Not Interested, Meeting Request, etc.).
@@ -72,7 +81,7 @@ class ThreadController extends Controller
             $query->forAccount((int) $request->input('account_id'));
         }
 
-        $threads = $query->latest()->cursorPaginate(20);
+        $threads = $query->orderByDesc('last_message_at')->cursorPaginate(20);
 
         return response()->json($threads);
     }

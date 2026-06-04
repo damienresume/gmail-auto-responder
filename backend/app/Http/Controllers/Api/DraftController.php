@@ -247,16 +247,21 @@ class DraftController extends Controller
                 return false;
             }
 
+            $response = null;
+
+            // Try drafts.send first if we have a Gmail draft ID.
             if ($draft->gmail_draft_id) {
-                // Send the existing Gmail draft.
                 $response = Http::withToken($account->access_token)
                     ->timeout(15)
                     ->post("https://gmail.googleapis.com/gmail/v1/users/me/drafts/send", [
                         'id' => $draft->gmail_draft_id,
                     ]);
-            } else {
-                // No Gmail draft exists (creation failed earlier).
-                // Create and send a message directly.
+            }
+
+            // Fall back to messages.send if no Gmail draft ID exists or
+            // if drafts.send returned 404 (draft was deleted from Gmail,
+            // e.g., after reconnecting the account or manual deletion).
+            if (!$response || $response->status() === 404) {
                 $rawMessage = implode("\r\n", [
                     "To: {$thread->from_email}",
                     "From: {$account->gmail_email}",
