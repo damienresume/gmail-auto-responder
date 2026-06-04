@@ -1,0 +1,21 @@
+# Scales Horizon workers based on Redis queue depth.
+# Requires Prometheus adapter exposing redis_queue_length metric.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: horizon-hpa
+  namespace: gmail-autoresponder
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: horizon
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -22,13 +22,18 @@
 
 use App\Http\Controllers\Api\DraftController;
 use App\Http\Controllers\Api\GmailWebhookController;
+use App\Http\Controllers\Api\HealthController;
 use App\Http\Controllers\Api\ThreadController;
 use Illuminate\Support\Facades\Route;
+
+// Health checks (public, no auth - used by load balancers and K8s probes)
+Route::get('/health', [HealthController::class, 'check']);
+Route::get('/health/gmail', [HealthController::class, 'gmail']);
 
 // -------------------------------------------------------------------------
 // Public: Gmail Pub/Sub Webhook
 // -------------------------------------------------------------------------
-// WHY no auth middleware: Google Pub/Sub sends push notifications as HTTP
+// WHY: Google Pub/Sub sends push notifications as HTTP
 // POST requests. It cannot include authentication tokens or session cookies.
 // The webhook validates requests by checking the email address in the
 // notification payload against our database of active Gmail accounts.

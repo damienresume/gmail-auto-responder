@@ -102,6 +102,10 @@ class GoogleAuthController extends Controller
             // Store or refresh the Gmail account connection.
             // Tokens are automatically encrypted by the model's `encrypted` cast
             // before being written to the database.
+            // Reset google_history_id on reconnect so the next sync does a
+            // fresh fetch. Without this, reconnecting after clearing data
+            // would skip re-fetching because the history ID thinks
+            // everything was already synced.
             $account = GmailAccount::updateOrCreate(
                 [
                     'user_id' => $request->user()->id,
@@ -112,6 +116,7 @@ class GoogleAuthController extends Controller
                     'refresh_token' => $googleUser->refreshToken ?? '',
                     'token_expires_at' => now()->addSeconds($googleUser->expiresIn ?? 3600),
                     'is_active' => true,
+                    'google_history_id' => null,
                 ],
             );
 
@@ -121,7 +126,10 @@ class GoogleAuthController extends Controller
                 'account_id' => $account->id,
             ]);
 
-            // Redirect to the frontend dashboard after successful connection.
+            // Dispatch fetch immediately so emails appear in the dashboard
+            // right away instead of waiting for the 60-second scheduler.
+            \App\Jobs\FetchNewEmailsJob::dispatch($account);
+
             return redirect(config('app.frontend_url', 'http://localhost:3000') . '/dashboard?gmail_connected=true');
         } catch (\Exception $e) {
             Log::error('Google OAuth callback failed', [
