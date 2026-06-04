@@ -79,16 +79,23 @@ class ClassifyEmailJob implements ShouldQueue
         }
 
         // Get the latest inbound message for classification.
-        // We classify based on the most recent message because it has the
-        // most current context (a thread might start as "interested" but
-        // the latest message says "never mind").
         $latestMessage = $this->thread->messages()
             ->where('direction', 'inbound')
             ->latest('received_at')
             ->first();
 
+        // If no inbound messages exist (image-only marketing emails,
+        // newsletters where all content was in HTML images with no text),
+        // auto-classify as not_interested so the thread doesn't stay
+        // stuck on "Classifying email..." in the dashboard forever.
         if (!$latestMessage) {
-            Log::warning('No inbound messages found for classification', [
+            $this->thread->update([
+                'classification' => 'not_interested',
+                'confidence_score' => 0.95,
+                'classification_reasoning' => 'No readable inbound message content. Likely a marketing or image-only email.',
+                'classified_at' => now(),
+            ]);
+            Log::info('Auto-classified thread as not_interested (no inbound text)', [
                 'thread_id' => $this->thread->id,
             ]);
             return;

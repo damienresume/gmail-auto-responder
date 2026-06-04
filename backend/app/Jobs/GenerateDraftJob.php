@@ -63,10 +63,14 @@ class GenerateDraftJob implements ShouldQueue
 
     public function handle(LlmServiceInterface $llm): void
     {
-        // Guard: don't generate a draft if one already exists for this thread.
-        // This handles duplicate dispatches from ClassifyEmailJob retries.
-        $existingDraft = $this->thread->latestDraft;
-        if ($existingDraft && $existingDraft->status !== Draft::STATUS_DISCARDED) {
+        // Guard: don't generate a draft if a non-discarded draft already exists.
+        // This prevents the scheduler from creating multiple drafts when the
+        // job runs repeatedly. Check ALL drafts, not just the latest, to
+        // catch edge cases where multiple drafts were created in parallel.
+        $existingDraft = Draft::where('email_thread_id', $this->thread->id)
+            ->whereNotIn('status', [Draft::STATUS_DISCARDED])
+            ->first();
+        if ($existingDraft) {
             Log::info('Draft already exists for thread, skipping', [
                 'thread_id' => $this->thread->id,
                 'draft_id' => $existingDraft->id,
