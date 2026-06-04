@@ -35,4 +35,19 @@ return [
         ],
     ],
 
+    // Google OAuth for Gmail account connections.
+    // WHY Socialite instead of raw OAuth: Socialite handles the OAuth 2.0 flow
+    // (authorization URL, token exchange, refresh) with a tested, maintained
+    // library. Rolling our own OAuth client would duplicate this work and
+    // introduce security risks (CSRF token handling, state parameter validation).
+    //
+    // The scopes request read-only Gmail access plus draft creation.
+    // We request the minimum permissions needed — no send permission
+    // until the user explicitly approves a draft in the dashboard.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', 'http://localhost:8000/auth/google/callback'),
+    ],
+
 ];

@@ -16,17 +16,20 @@ set -e
 # Ensure Laravel's writable directories exist and are owned by www-data.
 # These directories must be writable for logging, caching, file uploads,
 # and compiled views. 775 allows group write without world access.
+#
+# WHY chown -R (recursive) instead of just the directories:
+# Files inside these directories (e.g., laravel.log, compiled views) may
+# have been created by the host user (via composer commands or artisan)
+# with a different UID. The container's www-data user needs to own both
+# the directories AND the files inside them. Without -R, existing files
+# like laravel.log remain owned by the host UID and www-data gets
+# "Permission denied" when trying to append to the log file.
 for dir in \
     /var/www/html/storage \
-    /var/www/html/storage/logs \
-    /var/www/html/storage/framework \
-    /var/www/html/storage/framework/cache \
-    /var/www/html/storage/framework/sessions \
-    /var/www/html/storage/framework/views \
     /var/www/html/bootstrap/cache; do
     mkdir -p "$dir"
-    chown www-data:www-data "$dir"
-    chmod 775 "$dir"
+    chown -R www-data:www-data "$dir"
+    chmod -R 775 "$dir"
 done
 
 # Generate APP_KEY if not already set in the environment.
