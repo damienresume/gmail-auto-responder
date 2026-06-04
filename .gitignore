@@ -1,0 +1,80 @@
+# ============================================================================
+# Gmail Auto-Responder - .gitignore
+# Security-first: no credentials, secrets, or generated files in version control
+# ============================================================================
+
+# --------------------------------------------------------------------------
+# Environment & Secrets
+# CRITICAL: .env contains database passwords, API keys, OAuth secrets.
+# Only .env.example (with placeholders) is committed.
+# --------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+.env.backup
+.env.production
+.env.staging
+
+# --------------------------------------------------------------------------
+# Laravel Backend (backend/)
+# --------------------------------------------------------------------------
+backend/vendor/
+backend/node_modules/
+backend/.phpunit.cache/
+backend/coverage/
+backend/storage/*.key
+backend/storage/logs/*
+!backend/storage/logs/.gitkeep
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/bootstrap/cache/*
+!backend/bootstrap/cache/.gitkeep
+backend/.php-cs-fixer.cache
+backend/.phpunit.result.cache
+backend/auth.json
+
+# --------------------------------------------------------------------------
+# Next.js Frontend (frontend/)
+# --------------------------------------------------------------------------
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env
+frontend/.env.local
+frontend/.turbo/
+
+# --------------------------------------------------------------------------
+# Docker
+# --------------------------------------------------------------------------
+docker/mysql-data/
+docker/postgres-data/
+docker/redis-data/
+
+# --------------------------------------------------------------------------
+# IDE & OS
+# --------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --------------------------------------------------------------------------
+# Logs & Debug
+# --------------------------------------------------------------------------
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --------------------------------------------------------------------------
+# Test & Coverage Reports
+# --------------------------------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+junit.xml
+vitest-junit.xml

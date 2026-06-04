@@ -1,0 +1,198 @@
+# ============================================================================
+# Gmail Auto-Responder - Docker Compose
+# ============================================================================
+# Starts the complete development environment with a single command:
+#   docker compose up -d
+#
+# Services:
+#   app       - Laravel API (PHP 8.4) on port 8000
+#   frontend  - Next.js dashboard on port 3000
+#   postgres  - PostgreSQL 15 database on port 5432
+#   redis     - Redis 7 for queues + cache on port 6379
+#   horizon   - Laravel Horizon queue workers (no exposed port)
+#   ollama    - Local LLM inference on port 11434 (optional)
+#
+# Security decisions:
+#   - All ports bound to 127.0.0.1 (localhost only, not exposed to network)
+#   - Database credentials read from .env (never hardcoded here)
+#   - Named volumes for data persistence across restarts
+#   - Health checks on postgres and redis so app waits for them
+# ============================================================================
+
+services:
+
+  # --------------------------------------------------------------------------
+  # PostgreSQL 15 - Primary database
+  # --------------------------------------------------------------------------
+  # Why PostgreSQL over MySQL:
+  #   - Native JSONB for flexible email metadata
+  #   - Partial indexes for efficient draft review queries
+  #   - ON CONFLICT DO NOTHING for idempotent Pub/Sub handling
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: autoresponder-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-gmail_autoresponder}
+      POSTGRES_USER: ${DB_USERNAME:-app_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required in .env}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-app_user} -d ${DB_DATABASE:-gmail_autoresponder}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # --------------------------------------------------------------------------
+  # Redis 7 - Queue broker + cache + session store
+  # --------------------------------------------------------------------------
+  # Single Redis instance serves three purposes:
+  #   1. Queue broker for Horizon (gmail-ingest, classification, drafts)
+  #   2. Cache store for token expiry tracking and rate limit counters
+  #   3. Session store for authenticated dashboard users
+  # This avoids running separate services for each concern.
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: autoresponder-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Append-only file persistence so queue jobs survive Redis restarts.
+    command: redis-server --appendonly yes
+
+  # --------------------------------------------------------------------------
+  # Laravel API - Backend application server
+  # --------------------------------------------------------------------------
+  # In development, the backend/ directory is mounted as a volume so code
+  # changes are reflected immediately without rebuilding the container.
+  # The Dockerfile multi-stage build is used for production images only.
+  # --------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: autoresponder-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Mount backend/ directory for live code reloading in development.
+      # In production, remove this volume and rely on the built image.
+      - ./backend:/var/www/html:cached
+    working_dir: /var/www/html
+    # Override the Dockerfile CMD for development: use artisan serve
+    # instead of php-fpm, and enable OPcache timestamp validation
+    # so file changes are picked up without restarting.
+    command: php artisan serve --host=0.0.0.0 --port=8000
+
+  # --------------------------------------------------------------------------
+  # Laravel Horizon - Queue worker manager
+  # --------------------------------------------------------------------------
+  # Horizon runs as a separate container from the API so it can be scaled
+  # independently. It manages the 3 queue worker pools:
+  #   - gmail-ingest (3 workers, high priority)
+  #   - classification (2 workers, medium priority)
+  #   - drafts (2 workers, low priority)
+  #
+  # Uses the same image and code volume as the app service.
+  # --------------------------------------------------------------------------
+  horizon:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: autoresponder-horizon
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - ./backend:/var/www/html:cached
+    working_dir: /var/www/html
+    # Horizon manages its own worker processes internally.
+    # --without-scheduler: the scheduler runs separately if needed.
+    command: php artisan horizon
+
+  # --------------------------------------------------------------------------
+  # Next.js 15 - Frontend dashboard
+  # --------------------------------------------------------------------------
+  # In development, runs next dev with hot module replacement.
+  # The frontend/ directory is mounted for live reloading.
+  # --------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    container_name: autoresponder-frontend
+    restart: unless-stopped
+    depends_on:
+      - app
+    # Run as root so the entrypoint can remap UIDs to match the host.
+    # The entrypoint drops to the non-root "node" user before running
+    # the application. This is portable across Linux, macOS, and Windows.
+    user: "root"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # Mount frontend/ for hot module replacement in development.
+      - ./frontend:/app:cached
+    working_dir: /app
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    # The entrypoint handles npm install and privilege dropping.
+    # We only need to override the CMD for the dev server.
+    entrypoint: ["/usr/local/bin/entrypoint.sh"]
+    command: ["npm", "run", "dev"]
+
+  # --------------------------------------------------------------------------
+  # Ollama - Local LLM inference (optional)
+  # --------------------------------------------------------------------------
+  # Only needed when LLM_PROVIDER=ollama in .env.
+  # Runs Llama 3.1 8B locally. Requires ~8GB RAM.
+  # Uses the "tools" profile so it doesn't start by default.
+  # Start manually: docker compose --profile tools up -d ollama
+  # --------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: autoresponder-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    profiles:
+      - tools
+
+# --------------------------------------------------------------------------
+# Named volumes for data persistence.
+# Data survives container restarts and rebuilds.
+# To reset everything: docker compose down -v
+# --------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    name: autoresponder_postgres_data
+  redis_data:
+    name: autoresponder_redis_data
+  ollama_data:
+    name: autoresponder_ollama_data
