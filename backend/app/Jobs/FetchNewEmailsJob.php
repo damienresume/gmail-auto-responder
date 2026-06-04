@@ -315,16 +315,33 @@ class FetchNewEmailsJob implements ShouldQueue
             $bodyText = $this->extractBody($data['payload'] ?? [], 'text/plain');
             $bodyHtml = $this->extractBody($data['payload'] ?? [], 'text/html');
 
-            // Skip messages with no readable content. These are typically
-            // calendar invites, read receipts, or delivery notifications
-            // that have no text or HTML body. Storing them would create
-            // empty "(No content)" entries in the dashboard.
+            // Skip messages with no readable content.
             if (empty($bodyText) && empty($bodyHtml)) {
                 return;
             }
 
-            // firstOrCreate prevents duplicate messages. If this exact message
-            // was already stored (duplicate Pub/Sub notification), this is a no-op.
+            // If plain text is missing but HTML exists, convert HTML to
+            // readable text. Inserts newlines before block elements so
+            // Outlook HTML produces readable output after stripping.
+            if (empty($bodyText) && !empty($bodyHtml)) {
+                $text = preg_replace('/<(br|p|div|tr|li|h[1-6])[^>]*>/i', "\n", $bodyHtml);
+                $text = strip_tags($text);
+                $text = html_entity_decode($text, ENT_QUOTES, 'UTF-8');
+                $text = preg_replace('/[ \t]+/', ' ', $text);
+                $text = preg_replace('/\n{3,}/', "\n\n", $text);
+                $bodyText = trim($text);
+            }
+
+            // Skip messages that are empty, whitespace-only, or just a period
+            // (common in calendar invites and read receipts).
+            $cleanedText = trim($bodyText ?? '');
+            if ($cleanedText === '' || $cleanedText === '.') {
+                return;
+            }
+            $bodyText = $cleanedText;
+
+            // firstOrCreate prevents duplicate messages. If this exact
+            // gmail_message_id was already stored, this is a no-op.
             EmailMessage::firstOrCreate(
                 ['gmail_message_id' => $messageId],
                 [

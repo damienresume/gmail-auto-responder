@@ -15,7 +15,7 @@
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import type { Thread, PaginatedResponse } from '@/lib/types';
@@ -41,23 +41,38 @@ export default function ThreadsPage() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchThreads() {
-      setLoading(true);
-      const endpoint = filter
-        ? `/api/threads?classification=${filter}`
-        : '/api/threads';
-      const response = await api.get<PaginatedResponse<Thread>>(endpoint);
+  // Fetch threads from the API. useCallback so the polling interval
+  // can call the same function without re-creating it.
+  const fetchThreads = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    const endpoint = filter
+      ? `/api/threads?classification=${filter}`
+      : '/api/threads';
+    const response = await api.get<PaginatedResponse<Thread>>(endpoint);
 
-      if (response.error) {
-        setError(response.error);
-      } else {
-        setThreads(response.data?.data ?? []);
-      }
-      setLoading(false);
+    if (response.error) {
+      setError(response.error);
+    } else {
+      setThreads(response.data?.data ?? []);
+      setError(null);
     }
-    fetchThreads();
+    if (showLoading) setLoading(false);
   }, [filter]);
+
+  // Initial fetch on mount and when filter changes.
+  useEffect(() => {
+    fetchThreads(true);
+  }, [fetchThreads]);
+
+  // Auto-refresh every 10 seconds so new emails appear automatically.
+  // This is especially important when the user first connects Gmail
+  // and the database is empty — the scheduler fetches emails in the
+  // background and the dashboard picks them up on the next poll.
+  // showLoading=false so the refresh is silent (no flicker).
+  useEffect(() => {
+    const interval = setInterval(() => fetchThreads(false), 10000);
+    return () => clearInterval(interval);
+  }, [fetchThreads]);
 
   // Filter tab buttons. null = show all threads.
   const filters = [
@@ -139,7 +154,7 @@ export default function ThreadsPage() {
                     </div>
                     <p className="text-sm text-gray-900 truncate">{thread.subject}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {new Date((thread as Record<string, string>).last_message_at || thread.updated_at).toLocaleDateString(undefined, {
+                      {new Date((thread as unknown as Record<string, string>).last_message_at || thread.updated_at).toLocaleDateString(undefined, {
                         month: 'short', day: 'numeric', year: 'numeric',
                         hour: '2-digit', minute: '2-digit',
                       })}

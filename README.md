@@ -202,8 +202,8 @@ The assignment specifies MySQL or PostgreSQL. PostgreSQL was chosen for:
                              └────────────────────────────┘     │ created_at                     │
                                                                 │ updated_at                     │
                                                                 └────────────────────────────────┘
-                                                                         │
-                                                            1:N          │          1:1
+                                                                        │
+                                                            1:N         │          1:1
                                                       ┌─────────────────┴─────────────────┐
                                                       │                                   │
                                                       ▼                                   ▼
@@ -222,8 +222,6 @@ The assignment specifies MySQL or PostgreSQL. PostgreSQL was chosen for:
                                              └────────────────────────┘     │ updated_at             │
                                                                             └────────────────────────┘
 ```
-
-PNG version: [docs/diagrams/data-model.png](docs/diagrams/data-model.png)
 
 **Relationships:**
 
@@ -391,8 +389,6 @@ Google's per-user rate limit is **250 quota units per user per second**. Our des
               │  • Store in drafts table     │
               └──────────────────────────────┘
 ```
-
-PNG version: [docs/diagrams/queue-architecture.png](docs/diagrams/queue-architecture.png)
 
 ### Why Three Separate Queues
 
