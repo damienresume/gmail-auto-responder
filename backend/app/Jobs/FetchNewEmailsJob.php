@@ -315,6 +315,14 @@ class FetchNewEmailsJob implements ShouldQueue
             $bodyText = $this->extractBody($data['payload'] ?? [], 'text/plain');
             $bodyHtml = $this->extractBody($data['payload'] ?? [], 'text/html');
 
+            // Skip messages with no readable content. These are typically
+            // calendar invites, read receipts, or delivery notifications
+            // that have no text or HTML body. Storing them would create
+            // empty "(No content)" entries in the dashboard.
+            if (empty($bodyText) && empty($bodyHtml)) {
+                return;
+            }
+
             // firstOrCreate prevents duplicate messages. If this exact message
             // was already stored (duplicate Pub/Sub notification), this is a no-op.
             EmailMessage::firstOrCreate(
