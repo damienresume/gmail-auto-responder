@@ -58,6 +58,17 @@ class AuthController extends Controller
      */
     public function register(Request $request): JsonResponse
     {
+        // WHY invalidate first: If the user previously had an account that
+        // was deleted (e.g., during development or account reset), their
+        // browser still holds the old session cookie. That session in Redis
+        // carries stale auth data referencing a non-existent user. Without
+        // clearing it, Auth::login() tries to overwrite the stale session,
+        // but Sanctum's session resolution can fail on the next request
+        // because the session was originally created for a different user.
+        // Invalidating first gives us a clean slate.
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
@@ -98,6 +109,13 @@ class AuthController extends Controller
      */
     public function login(Request $request): JsonResponse
     {
+        // WHY invalidate before attempting: Same reason as register —
+        // clears any stale session data from a previously deleted user.
+        // Without this, logging in after a user deletion can leave
+        // conflicting auth state in the session.
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
         $credentials = $request->validate([
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],

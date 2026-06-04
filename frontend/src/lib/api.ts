@@ -106,6 +106,21 @@ export async function apiRequest<T>(
     const body = await response.json();
 
     if (!response.ok) {
+      // WHY redirect on 401: When the session expires or the user isn't
+      // logged in, every API call returns 401 "Unauthenticated." Showing
+      // this raw error on the dashboard is confusing — the user doesn't
+      // know what went wrong. Instead, we redirect to login automatically
+      // so they can re-authenticate. The redirect only fires in the
+      // browser (typeof window !== 'undefined') to avoid SSR issues.
+      if (response.status === 401 && typeof window !== 'undefined') {
+        // Avoid redirect loops: don't redirect if already on login/register.
+        const path = window.location.pathname;
+        if (path !== '/login' && path !== '/register') {
+          window.location.href = '/login';
+          return { data: null, error: 'Session expired. Redirecting to login...' };
+        }
+      }
+
       // Laravel returns validation errors as { message: '...', errors: {...} }
       // and auth errors as { message: 'Unauthenticated.' }.
       // We extract the message for display in the UI.

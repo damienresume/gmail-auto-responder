@@ -52,6 +52,19 @@ Route::post('/gmail/webhook', [GmailWebhookController::class, 'handle'])
 // -------------------------------------------------------------------------
 Route::middleware('auth:sanctum')->group(function () {
 
+    // User profile — the dashboard's auth check on mount.
+    // WHY here (API routes) instead of only on web routes:
+    // The dashboard calls this cross-origin via fetch from localhost:3000.
+    // Sanctum's statefulApi() middleware (EnsureFrontendRequestsAreStateful)
+    // only applies to API routes. It adds session, encryption, and CSRF
+    // middleware for requests from stateful domains (configured in
+    // SANCTUM_STATEFUL_DOMAINS). Without it, cross-origin fetch calls to
+    // web routes may not properly resolve the session, causing 401s even
+    // when the user just logged in.
+    Route::get('/user', function (\Illuminate\Http\Request $request) {
+        return response()->json($request->user()->only(['id', 'name', 'email']));
+    })->name('api.user');
+
     // Thread endpoints — the dashboard's primary data source.
     Route::get('/threads', [ThreadController::class, 'index'])->name('threads.index');
     Route::get('/threads/{id}', [ThreadController::class, 'show'])->name('threads.show');

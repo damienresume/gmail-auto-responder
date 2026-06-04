@@ -14,10 +14,18 @@
  *
  * WHY 'use client':
  * The logout button needs onClick handler and the useRouter hook for
- * redirect after logout. These require client-side JavaScript.
+ * redirect after logout. Auth check uses useEffect and useState.
+ *
+ * WHY an auth guard here:
+ * Without it, the dashboard renders immediately after navigation and
+ * the child pages make API calls that return 401 "Unauthenticated."
+ * The user sees a confusing red error banner instead of being smoothly
+ * redirected to login. The auth guard calls /user on mount to verify
+ * the session is valid before rendering any dashboard content.
  */
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { api } from '@/lib/api';
@@ -30,10 +38,41 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
+  const [user, setUser] = useState<{ id: number; name: string; email: string } | null>(null);
+
+  // Check if the user is authenticated on mount. If not, redirect to
+  // login instead of rendering the dashboard and showing confusing
+  // "Unauthenticated." errors from API calls.
+  useEffect(() => {
+    async function checkAuth() {
+      const response = await api.get<{ id: number; name: string; email: string }>('/api/user');
+      if (response.error || !response.data) {
+        // Session expired or user not logged in — the API client's 401
+        // handler will redirect to /login. We set authChecked to avoid
+        // a flash of dashboard content.
+        setAuthChecked(true);
+        return;
+      }
+      setUser(response.data);
+      setAuthChecked(true);
+    }
+    checkAuth();
+  }, []);
 
   async function handleLogout() {
     await api.post('/logout');
     router.push('/login');
+  }
+
+  // Show a clean loading state while verifying auth. This prevents the
+  // dashboard from flashing briefly before a redirect to login.
+  if (!authChecked || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-gray-500 text-sm">Loading...</p>
+      </div>
+    );
   }
 
   return (
@@ -61,6 +100,8 @@ export default function DashboardLayout({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Show the logged-in user's name for context */}
+          <span className="text-sm text-gray-500">{user.name}</span>
           <a
             href={`${API_BASE}/auth/google/redirect`}
             className="px-4 py-2 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"

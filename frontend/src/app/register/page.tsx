@@ -56,7 +56,13 @@ export default function RegisterPage() {
       if (response.error) {
         setError(response.error);
       } else {
-        router.push('/dashboard');
+        // WHY window.location.href instead of router.push: A full browser
+        // navigation guarantees all Set-Cookie headers from the register
+        // response are fully processed before the dashboard page loads.
+        // router.push does a client-side navigation that can race ahead
+        // of cookie processing, causing the dashboard's auth check to
+        // return 401 and kick the user back to login.
+        window.location.href = '/dashboard';
       }
     } catch {
       setError('An unexpected error occurred. Please try again.');

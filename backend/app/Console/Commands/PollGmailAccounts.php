@@ -23,7 +23,7 @@ use Illuminate\Console\Command;
  *
  * HOW it works:
  * The Laravel scheduler (defined in routes/console.php) runs this
- * command every 30 seconds. For each active Gmail account, it dispatches
+ * command every 15 seconds. For each active Gmail account, it dispatches
  * a FetchNewEmailsJob to the gmail-ingest queue. Horizon workers pick
  * up the jobs and call the Gmail API to check for new messages.
  *
