@@ -25,42 +25,45 @@ A scalable, AI-powered Gmail auto-responder built with Laravel, Next.js, and a s
 ## High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              GOOGLE CLOUD                                   │
-│                                                                             │
-│   ┌──────────────┐          ┌───────────────────┐                           │
-│   │  Gmail Inbox │─────────▶│  Google Cloud     │                           │
-│   │              │ new      │  Pub/Sub          │                           │
-│   └──────────────┘ email    └─────────┬─────────┘                           │
-│                                       │ push notification                   │
-└───────────────────────────────────────┼─────────────────────────────────────┘
-                                        │
-                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           LARAVEL BACKEND                                   │
-│                                                                             │
-│   ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐      │
-│   │  Pub/Sub Webhook │───▶│  Laravel Horizon │───▶│ FetchNewEmailsJob│      │
-│   │  POST /api/gmail │    │  (Redis Queues)  │    │                  │      │
-│   │  webhook         │    └──────────────────┘    └────────┬─────────┘      │
-│   └──────────────────┘                                      │               │
-│                                                             ▼               │
-│                                                  ┌──────────────────┐       │
-│                                                  │ ClassifyEmailJob │       │
-│   ┌───────────────────┐                          │ • Send to LLM    │       │
-│   │  REST API         │                          │ • Store result   │       │
-│   │  GET /api/threads │                          └────────┬─────────┘       │
-│   │  GET /api/drafts  │                                   │                 │
-│   │  POST /api/drafts │                                   ▼                 │
-│   │    /:id/send      │                          ┌──────────────────┐       │
-│   └───────────────────┘                          │ GenerateDraftJob │       │
-│                                                  │ • Send to LLM    │       │
-│                                                  │ • Save Gmail     │       │
-│                                                  │   draft          │       │
-│                                                  └──────────────────┘       │
-└─────────────────────────────────────────────────────────────────────────────┘
-         │                          │                         │
-         ▼                          ▼                         ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              GOOGLE CLOUD                                  │
+│                                                                            │
+│   ┌──────────────┐          ┌──────────────────┐                           │
+│   │  Gmail Inbox │─────────▶│  Google Cloud    │                           │
+│   │  Gmail API   │◀─ ─ ─ ─ ─│  Pub/Sub         │                           │
+│   └──────┬───────┘          └────────┬─────────┘                           │
+│          │ ▲                         │ push notification                   │
+└──────────┼─┼─────────────────────────┼─────────────────────────────────────┘
+           │ │                         │
+           │ │  Gmail API calls        │
+           │ │  (fetch emails,         │
+           │ │   create drafts)        │
+           │ │                         ▼
+┌──────────┼─┼──────────────────────────────────────────────────────────────┐
+│          │ │         LARAVEL BACKEND                                      │
+│          ▼ │                                                              │
+│   ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐    │
+│   │  Pub/Sub Webhook │───▶│  Laravel Horizon │───▶│ FetchNewEmailsJob│──┐ │
+│   │  POST /api/gmail │    │  (Redis Queues)  │    │                  │  │ │
+│   │  webhook         │    └──────────────────┘    └────────┬─────────┘  │ │
+│   └──────────────────┘                                     │            │ │
+│                                                            ▼            │ │
+│                                                 ┌──────────────────┐    │ │
+│                                                 │ ClassifyEmailJob │    │ │
+│   ┌───────────────────┐                         │ • Send to LLM    │    │ │
+│   │  REST API         │                         │ • Store result   │    │ │
+│   │  GET /api/threads │                         └────────┬─────────┘    │ │
+│   │  GET /api/drafts  │                                  │              │ │
+│   │  POST /api/drafts │                                  ▼              │ │
+│   │    /:id/send      │                         ┌──────────────────┐    │ │
+│   └────────┬──────────┘                         │ GenerateDraftJob │    │ │
+│            │                                    │ • Send to LLM    │    │ │
+│            │                                    │ • Save Gmail     │────┘ │
+│            │                                    │   draft (API)    │      │
+│            │                                    └──────────────────┘      │
+└────────────┼───────────────────┬──────────────────────┬───────────────────┘
+             │                   │                      │
+             │                   ▼                      ▼
 ┌────────────────┐    ┌───────────────────┐    ┌──────────────────────────────┐
 │  PostgreSQL    │    │  Redis 7          │    │  LLM Service (Adapter)       │
 │  15            │    │  Queue + Cache    │    │                              │
@@ -74,8 +77,8 @@ A scalable, AI-powered Gmail auto-responder built with Laravel, Next.js, and a s
 │                │    │                   │    │       │ (no LLM)  │          │
 │                │    │                   │    │       └───────────┘          │
 └────────────────┘    └───────────────────┘    └──────────────────────────────┘
-                                                            │
-                                                            │
+         │  ▲ HTTP GET/POST (JSON)
+         ▼  │
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        NEXT.JS 15 DASHBOARD                                 │
 │                                                                             │
@@ -83,6 +86,9 @@ A scalable, AI-powered Gmail auto-responder built with Laravel, Next.js, and a s
 │   │ Thread List  │  │ Classifi-    │  │ Draft Editor │  │ Approve /    │    │
 │   │              │  │ cation View  │  │              │  │ Edit / Send  │    │
 │   └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                                                                             │
+│   Calls REST API: GET /api/threads, GET /api/drafts,                        │
+│   POST /api/drafts/:id/send, POST /api/drafts/:id/edit                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
