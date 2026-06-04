@@ -9,66 +9,108 @@ use App\DTOs\DraftReplyResult;
  * StubLlmService
  *
  * PURPOSE:
- * A fake LLM provider that returns instant, deterministic responses without
- * calling any external API or running any model. Set LLM_PROVIDER=stub in
- * .env to use it.
+ * A keyword-based LLM stub that returns realistic, varied responses without
+ * calling any external API. Set LLM_PROVIDER=stub in .env to use it.
  *
  * WHY this exists:
- *   - Code review: A Developer can clone the repo, run docker compose up,
- *     and see the full pipeline working end-to-end without signing up for
- *     Groq or downloading an 8GB Ollama model.
- *
- *   - Testing: Unit and integration tests use this to verify queue jobs,
- *     controllers, and the classification pipeline without network calls
- *     or model inference. Tests stay fast and deterministic.
- *
- *   - Local development: Developers can work on the dashboard, API, and
- *     queue logic without waiting for LLM responses (Ollama on CPU takes
- *     5-15 seconds per call).
+ *   - Code review: A developer can clone the repo, run docker compose up,
+ *     and see the full pipeline working with realistic data. No Groq signup
+ *     or 8GB Ollama model download needed.
+ *   - Testing: Unit and integration tests get fast, deterministic results.
+ *   - Demo: The dashboard shows varied classifications and contextual drafts
+ *     instead of identical "interested" on every thread.
  *
  * HOW it works:
- *   - classifyEmail() returns "interested" for every email with 0.85 confidence.
- *     This ensures GenerateDraftJob always fires, so the full pipeline
- *     (fetch -> classify -> draft) can be tested end-to-end.
- *
- *   - generateReply() returns a canned professional reply. The text is static
- *     so test assertions can match exact output.
+ *   - classifyEmail() scans the subject and body for keywords to determine
+ *     classification. "meeting", "call", "schedule" -> meeting_request.
+ *     "unsubscribe", "remove", "no longer" -> not_interested. Etc.
+ *     This produces realistic demo data that shows all four categories.
+ *   - generateReply() tailors the response based on the classification,
+ *     referencing the actual subject line for context.
  */
 class StubLlmService implements LlmServiceInterface
 {
     /**
-     * Always classifies as "interested" with 85% confidence.
+     * Classify based on keyword analysis of the email content.
      *
-     * WHY "interested" and not random:
-     * Deterministic output makes debugging straightforward. If every email
-     * is classified as "interested", every email gets a draft, which means
-     * every part of the pipeline executes. Random output would make tests
-     * inconsistent and make it hard to reproduce bugs.
+     * WHY keyword-based instead of random:
+     * Random would produce inconsistent results across page reloads.
+     * Keyword-based is deterministic (same email always gets the same
+     * classification) and produces realistic variety in the dashboard.
      */
     public function classifyEmail(string $subject, string $body, string $fromEmail): ClassificationResult
     {
+        $text = strtolower($subject . ' ' . $body);
+
+        // Meeting request: scheduling language
+        if (preg_match('/\b(meeting|schedule|call|demo|interview|available|calendar|book a time)\b/', $text)) {
+            return new ClassificationResult(
+                classification: 'meeting_request',
+                confidence: 0.92,
+                reasoning: 'Email contains scheduling language indicating a meeting or call request.',
+            );
+        }
+
+        // Not interested: opt-out or automated notifications
+        if (preg_match('/\b(unsubscribe|remove|no longer|opt.out|not interested|do not reply|noreply|account.recovered|ssh key|security alert)\b/', $text)) {
+            return new ClassificationResult(
+                classification: 'not_interested',
+                confidence: 0.88,
+                reasoning: 'Email appears to be an automated notification or opt-out request.',
+            );
+        }
+
+        // Interested: engagement language
+        if (preg_match('/\b(interested|partnership|opportunity|follow.up|proposal|pricing|quote|collaborate|excited|love to)\b/', $text)) {
+            return new ClassificationResult(
+                classification: 'interested',
+                confidence: 0.91,
+                reasoning: 'Email contains engagement language suggesting interest in collaboration or business.',
+            );
+        }
+
+        // Default: unclear
         return new ClassificationResult(
-            classification: 'interested',
-            confidence: 0.85,
-            reasoning: 'Stub provider: automatically classified as interested for development and testing.',
+            classification: 'unclear',
+            confidence: 0.55,
+            reasoning: 'Email intent is ambiguous. Flagged for manual review.',
         );
     }
 
     /**
-     * Returns a automated professional reply.
+     * Generate a context-aware reply based on the classification.
      *
-     * WHY a realistic reply instead of "test reply":
-     * The dashboard renders this text. A realistic reply lets you 
-     * see what the UI will actually look like in production,
-     * including formatting, line breaks, and length.
+     * WHY different replies per classification:
+     * The dashboard should show that the system tailors responses.
+     * A meeting request gets a scheduling reply, an interested email
+     * gets an enthusiasm reply. This demonstrates the LLM adapter's
+     * role even without a real model running.
      */
     public function generateReply(string $subject, string $body, string $classification): DraftReplyResult
     {
-        $replyText = "Thank you for your email regarding \"{$subject}\".\n\n"
-            . "I've reviewed your message and would like to follow up. "
-            . "Could we schedule a brief call to discuss this further?\n\n"
-            . "Looking forward to hearing from you.\n\n"
-            . "Best regards";
+        $replyText = match ($classification) {
+            'meeting_request' => "Thank you for reaching out about \"{$subject}\".\n\n"
+                . "I'd be happy to schedule a time to connect. I'm generally available "
+                . "Monday through Thursday. Would any of the following work for you?\n\n"
+                . "- Tomorrow at 10:00 AM EST\n"
+                . "- Wednesday at 2:00 PM EST\n"
+                . "- Thursday at 11:00 AM EST\n\n"
+                . "Please let me know what works best, and I'll send over a calendar invite.\n\n"
+                . "Best regards",
+
+            'interested' => "Thank you for your email regarding \"{$subject}\".\n\n"
+                . "I appreciate your interest and would love to explore this further. "
+                . "Could you share a bit more about what you have in mind? "
+                . "I'd be happy to set up a call to discuss next steps.\n\n"
+                . "Looking forward to hearing from you.\n\n"
+                . "Best regards",
+
+            default => "Thank you for your email regarding \"{$subject}\".\n\n"
+                . "I've received your message and wanted to acknowledge it. "
+                . "Could you provide a bit more context about what you're looking for? "
+                . "That would help me give you a more helpful response.\n\n"
+                . "Thanks,\nBest regards",
+        };
 
         return DraftReplyResult::fromLlmResponse(
             response: ['reply' => $replyText],
