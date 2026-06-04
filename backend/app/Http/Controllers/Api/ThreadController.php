@@ -56,6 +56,9 @@ class ThreadController extends Controller
             ->whereHas('gmailAccount', function ($q) use ($request) {
                 $q->where('user_id', $request->user()->id);
             })
+            // Only show classified threads. Unclassified threads are still
+            // being processed and shouldn't appear in the dashboard yet.
+            ->whereNotNull('classification')
             ->with(['latestDraft', 'gmailAccount:id,gmail_email'])
             // Add the most recent message's received_at as last_message_at
             // so the frontend can display the actual email date, not our

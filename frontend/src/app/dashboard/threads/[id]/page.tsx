@@ -378,19 +378,11 @@ export default function ThreadDetailPage() {
           </div>
         ) : (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
-            {thread.classification === null ? (
-              <div>
-                <div className="inline-block w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                <p className="text-gray-500 text-sm">Classifying email...</p>
-              </div>
-            ) : thread.classification === 'not_interested' ? (
-              <p className="text-gray-500 text-sm">No draft generated (classified as not interested).</p>
-            ) : (
-              <div>
-                <div className="inline-block w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                <p className="text-gray-500 text-sm">Generating draft reply...</p>
-              </div>
-            )}
+            <p className="text-gray-500 text-sm">
+              {thread.classification === 'not_interested'
+                ? 'No draft generated (classified as not interested).'
+                : 'No draft available for this thread.'}
+            </p>
           </div>
         )}
         </div>

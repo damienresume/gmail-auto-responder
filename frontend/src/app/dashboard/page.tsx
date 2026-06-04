@@ -162,14 +162,10 @@ export default function ThreadsPage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {/* Classification badge */}
-                    {style ? (
+                    {/* Classification badge - always shows one of the four categories */}
+                    {style && (
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${style.bg} ${style.text}`}>
                         {style.label}
-                      </span>
-                    ) : (
-                      <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
-                        Pending
                       </span>
                     )}
 
