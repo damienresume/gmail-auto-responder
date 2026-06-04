@@ -1,10 +1,32 @@
 <?php
 
+use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Auth\GoogleAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
+});
+
+// -------------------------------------------------------------------------
+// Authentication Routes (Session-Based)
+// -------------------------------------------------------------------------
+// WHY web routes (not API routes): Register, login, and logout use
+// Laravel sessions for authentication. The web middleware stack provides
+// session handling and CSRF protection. API routes don't include session
+// middleware by default, which causes "Session store not set on request."
+//
+// WHY no auth middleware on register/login: These endpoints create the
+// session. Requiring an existing session to create one is a contradiction.
+// Logout and refresh require auth because they operate on an existing session.
+// -------------------------------------------------------------------------
+Route::post('/register', [AuthController::class, 'register'])->name('auth.register');
+Route::post('/login', [AuthController::class, 'login'])->name('auth.login');
+
+Route::middleware('auth')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout'])->name('auth.logout');
+    Route::post('/refresh', [AuthController::class, 'refresh'])->name('auth.refresh');
+    Route::get('/user', [AuthController::class, 'user'])->name('auth.user');
 });
 
 // -------------------------------------------------------------------------

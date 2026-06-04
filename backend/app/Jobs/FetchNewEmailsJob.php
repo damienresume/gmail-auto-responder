@@ -265,35 +265,55 @@ class FetchNewEmailsJob implements ShouldQueue
                 $fromEmail = $matches[2];
             }
 
-            // Upsert the thread. If it already exists (duplicate notification),
-            // we update the subject in case it changed (rare but possible with
-            // Gmail thread regrouping).
-            $thread = EmailThread::updateOrCreate(
+            // Determine direction early so we can decide what to store on the thread.
+            $direction = (strtolower($fromEmail) === strtolower($this->account->gmail_email))
+                ? EmailMessage::DIRECTION_OUTBOUND
+                : EmailMessage::DIRECTION_INBOUND;
+
+            // Upsert the thread. Only set from_name/from_email from INBOUND
+            // messages so the thread always shows the external sender's name,
+            // not the user's own name. If the first message is outbound, we
+            // still create the thread but leave from_name/email to be updated
+            // when the first inbound message arrives.
+            $threadData = [
+                'subject' => $subject,
+                'metadata' => [
+                    'labels' => $data['labelIds'] ?? [],
+                    'snippet' => $data['snippet'] ?? '',
+                    'internal_date' => $data['internalDate'] ?? null,
+                ],
+            ];
+
+            // Only set the sender fields from inbound messages (the external person).
+            // For outbound messages, preserve existing sender data on the thread.
+            if ($direction === EmailMessage::DIRECTION_INBOUND) {
+                $threadData['from_email'] = $fromEmail;
+                $threadData['from_name'] = $fromName;
+            }
+
+            $thread = EmailThread::firstOrCreate(
                 [
                     'gmail_account_id' => $this->account->id,
                     'gmail_thread_id' => $threadId,
                 ],
-                [
-                    'subject' => $subject,
+                array_merge($threadData, [
                     'from_email' => $fromEmail,
                     'from_name' => $fromName,
-                    'metadata' => [
-                        'labels' => $data['labelIds'] ?? [],
-                        'snippet' => $data['snippet'] ?? '',
-                        'internal_date' => $data['internalDate'] ?? null,
-                    ],
-                ],
+                ]),
             );
+
+            // If thread already existed and this is an inbound message,
+            // update the sender info to the external person.
+            if (!$thread->wasRecentlyCreated && $direction === EmailMessage::DIRECTION_INBOUND) {
+                $thread->update([
+                    'from_email' => $fromEmail,
+                    'from_name' => $fromName,
+                ]);
+            }
 
             // Extract message body. Gmail nests the body in the payload parts.
             $bodyText = $this->extractBody($data['payload'] ?? [], 'text/plain');
             $bodyHtml = $this->extractBody($data['payload'] ?? [], 'text/html');
-
-            // Determine direction: if the sender matches the account's email,
-            // this is an outbound message (a reply we sent). Otherwise inbound.
-            $direction = (strtolower($fromEmail) === strtolower($this->account->gmail_email))
-                ? EmailMessage::DIRECTION_OUTBOUND
-                : EmailMessage::DIRECTION_INBOUND;
 
             // firstOrCreate prevents duplicate messages. If this exact message
             // was already stored (duplicate Pub/Sub notification), this is a no-op.

@@ -54,6 +54,11 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // The Next.js frontend URL. Used for redirecting unauthenticated users
+    // and after OAuth callbacks. Separate from APP_URL because the backend
+    // and frontend run on different ports (8000 vs 3000).
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

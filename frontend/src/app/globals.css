@@ -24,3 +24,15 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* All buttons and links should show pointer cursor on hover.
+   This is a global override because Tailwind's preflight resets
+   the default button cursor to 'default'. Users expect a pointer
+   on anything clickable. */
+button,
+[role="button"],
+a,
+input[type="submit"],
+input[type="button"] {
+  cursor: pointer;
+}

@@ -34,7 +34,10 @@ return [
     // Only allow CORS on API routes and the Sanctum CSRF cookie endpoint.
     // Web routes (OAuth redirects) don't need CORS because the browser
     // navigates to them directly, not via fetch/XMLHttpRequest.
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    // WHY auth paths listed explicitly: register, login, logout, refresh, and
+    // user are web routes (not under /api) because they need session middleware.
+    // They still need CORS since the frontend calls them cross-origin.
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'register', 'logout', 'refresh', 'user'],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
 

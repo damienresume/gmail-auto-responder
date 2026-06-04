@@ -57,20 +57,47 @@ type ApiResponse<T> = {
  * @param options   Standard fetch options (method, body, headers, etc.)
  * @returns         Typed response with either data or error message
  */
+/**
+ * Read the XSRF-TOKEN cookie value.
+ *
+ * PURPOSE:
+ * Laravel's CSRF protection expects the token as an X-XSRF-TOKEN header,
+ * not just as a cookie. The browser stores the cookie from /sanctum/csrf-cookie,
+ * but fetch() doesn't automatically convert cookies to headers. We read
+ * the cookie manually and attach it as a header on every request.
+ *
+ * WHY decodeURIComponent: Laravel encrypts the XSRF token and URL-encodes
+ * it before setting the cookie. The browser stores the encoded value.
+ * We must decode it before sending as a header, otherwise Laravel rejects
+ * it because the encrypted value doesn't match after double-encoding.
+ */
+function getXsrfToken(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   try {
+    // Read the XSRF token from the cookie and attach as a header.
+    const xsrfToken = getXsrfToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
+    if (xsrfToken) {
+      headers['X-XSRF-TOKEN'] = xsrfToken;
+    }
+
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       ...options,
       headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        ...headers,
         ...options.headers,
       },
-      // WHY 'include': Sends session cookie and XSRF token with every
-      // request. Required for Sanctum SPA auth to work cross-origin.
       credentials: 'include',
     });
 
