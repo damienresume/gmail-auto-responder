@@ -22,11 +22,14 @@
  *     incremental sync via Gmail's history.list API where we only fetch changes
  *     since the last known ID, not the entire inbox. This is O(new emails) per
  *     sync, not O(total emails). Critical for scaling to many accounts because:
+ * 
  *       1. Gmail History Tracking: Every time an event occurs in an inbox (new mail,
  *          deletions, label changes), Google assigns it a sequential History ID. 
  *          We persist the latest ID here at the end of every sync cycle.
+ * 
  *       2. The Next Sync Request: On the next execution, our worker pulls this string
  *          and passes it directly to Google via `history.list?startHistoryId={id}`.
+ * 
  *       3. Streamlined Complexity: Instead of an O(total emails) brute-force operation
  *          forcing us to download thousands of IDs to find mismatches, Google filters 
  *          the ledger on their hardware. If 0 events happened, the response is O(1) 
