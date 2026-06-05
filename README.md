@@ -619,6 +619,30 @@ k8s/
 - **Secrets reference an external store** (AWS Secrets Manager or GCP Secret Manager) via the External Secrets Operator. The `APP_KEY`, `GROQ_API_KEY`, Google OAuth credentials, and database password are never hardcoded in manifests or ConfigMaps.
 - **HPA for Horizon** uses a custom metric: Redis queue length exposed via a Prometheus exporter. When `gmail-ingest` queue depth exceeds 100 pending jobs, HPA adds workers. When it drops below 20, it scales down.
 
+**Deploying to K8s:**
+
+```bash
+# 1. Create the namespace
+kubectl apply -f k8s/namespace.yaml
+
+# 2. Create config and secrets (edit secrets.yaml with your values first)
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secrets.yaml
+
+# 3. Run database migrations (one-shot job)
+kubectl apply -f k8s/jobs/migrate.yaml
+kubectl wait --for=condition=complete job/migrate -n gmail-autoresponder --timeout=120s
+
+# 4. Deploy all services
+kubectl apply -f k8s/deployments/
+kubectl apply -f k8s/services/
+kubectl apply -f k8s/ingress.yaml
+kubectl apply -f k8s/hpa/
+
+# 5. Verify
+kubectl get pods -n gmail-autoresponder
+```
+
 ---
 
 ## What I'd Build Next
@@ -731,16 +755,31 @@ This is for your local Docker database only - it never leaves your machine. Post
 docker compose up -d
 ```
 
-This starts all services: Laravel API, Next.js frontend, PostgreSQL, Redis, Horizon queue workers, and Ollama (if `LLM_PROVIDER=ollama`). First launch takes ~60–90 seconds while containers build and PostgreSQL initializes.
+This starts all services: Laravel API, Next.js frontend, PostgreSQL, Redis, Horizon queue workers, and the scheduler. First launch takes ~60–90 seconds while containers build and PostgreSQL initializes.
 
-### Step 4 - Run database migrations
+### Step 4 - Generate APP_KEY and run migrations
 
 ```bash
+# Generate the encryption key used for session cookies and OAuth token encryption.
+# This MUST be done before the first run — without it, sessions and encrypted
+# fields will fail silently.
+docker compose exec app php artisan key:generate
+
+# Create all database tables.
 docker compose exec app php artisan migrate
+```
+
+**Optional:** Seed a demo user account for quick testing:
+
+```bash
 docker compose exec app php artisan db:seed
 ```
 
-This creates all database tables and seeds a demo user account.
+This creates a test user with:
+- **Email:** `test@example.com`
+- **Password:** `password`
+
+Or skip seeding and register your own account at http://localhost:3000/register.
 
 ### Step 5 - Open the application
 

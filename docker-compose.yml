@@ -142,7 +142,7 @@ services:
   # which adds complexity. A dedicated container with `schedule:work` runs
   # the scheduler in the foreground, which is simpler and logs to stdout.
   #
-  # WHAT it does: Every 60 seconds, dispatches FetchNewEmailsJob for each
+  # WHAT it does: Every 15 seconds, dispatches FetchNewEmailsJob for each
   # active Gmail account. New emails are automatically picked up, classified
   # by the LLM, and draft replies generated — no manual intervention needed.
   # --------------------------------------------------------------------------
