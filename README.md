@@ -25,42 +25,45 @@ A scalable, AI-powered Gmail auto-responder built with Laravel, Next.js, and a s
 ## High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              GOOGLE CLOUD                                   │
-│                                                                             │
-│   ┌──────────────┐          ┌───────────────────┐                           │
-│   │  Gmail Inbox │─────────▶│  Google Cloud     │                           │
-│   │              │ new      │  Pub/Sub          │                           │
-│   └──────────────┘ email    └─────────┬─────────┘                           │
-│                                       │ push notification                   │
-└───────────────────────────────────────┼─────────────────────────────────────┘
-                                        │
-                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           LARAVEL BACKEND                                   │
-│                                                                             │
-│   ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐      │
-│   │  Pub/Sub Webhook │───▶│  Laravel Horizon │───▶│ FetchNewEmailsJob│      │
-│   │  POST /api/gmail │    │  (Redis Queues)  │    │                  │      │
-│   │  webhook         │    └──────────────────┘    └────────┬─────────┘      │
-│   └──────────────────┘                                      │               │
-│                                                             ▼               │
-│                                                  ┌──────────────────┐       │
-│                                                  │ ClassifyEmailJob │       │
-│   ┌───────────────────┐                          │ • Send to LLM    │       │
-│   │  REST API         │                          │ • Store result   │       │
-│   │  GET /api/threads │                          └────────┬─────────┘       │
-│   │  GET /api/drafts  │                                   │                 │
-│   │  POST /api/drafts │                                   ▼                 │
-│   │    /:id/send      │                          ┌──────────────────┐       │
-│   └───────────────────┘                          │ GenerateDraftJob │       │
-│                                                  │ • Send to LLM    │       │
-│                                                  │ • Save Gmail     │       │
-│                                                  │   draft          │       │
-│                                                  └──────────────────┘       │
-└─────────────────────────────────────────────────────────────────────────────┘
-         │                          │                         │
-         ▼                          ▼                         ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              GOOGLE CLOUD                                  │
+│                                                                            │
+│   ┌──────────────┐          ┌──────────────────┐                           │
+│   │  Gmail Inbox │─────────▶│  Google Cloud    │                           │
+│   │  Gmail API   │◀─ ─ ─ ─ ─│  Pub/Sub         │                           │
+│   └──────┬───────┘          └────────┬─────────┘                           │
+│          │ ▲                         │ push notification                   │
+└──────────┼─┼─────────────────────────┼─────────────────────────────────────┘
+           │ │                         │
+           │ │  Gmail API calls        │
+           │ │  (fetch emails,         │
+           │ │   create drafts)        │
+           │ │                         ▼
+┌──────────┼─┼──────────────────────────────────────────────────────────────┐
+│          │ │         LARAVEL BACKEND                                      │
+│          ▼ │                                                              │
+│   ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐    │
+│   │  Pub/Sub Webhook │───▶│  Laravel Horizon │───▶│ FetchNewEmailsJob│──┐ │
+│   │  POST /api/gmail │    │  (Redis Queues)  │    │                  │  │ │
+│   │  webhook         │    └──────────────────┘    └────────┬─────────┘  │ │
+│   └──────────────────┘                                     │            │ │
+│                                                            ▼            │ │
+│                                                 ┌──────────────────┐    │ │
+│                                                 │ ClassifyEmailJob │    │ │
+│   ┌───────────────────┐                         │ • Send to LLM    │    │ │
+│   │  REST API         │                         │ • Store result   │    │ │
+│   │  GET /api/threads │                         └────────┬─────────┘    │ │
+│   │  GET /api/drafts  │                                  │              │ │
+│   │  POST /api/drafts │                                  ▼              │ │
+│   │    /:id/send      │                         ┌──────────────────┐    │ │
+│   └────────┬──────────┘                         │ GenerateDraftJob │    │ │
+│            │                                    │ • Send to LLM    │    │ │
+│            │                                    │ • Save Gmail     │────┘ │
+│            │                                    │   draft (API)    │      │
+│            │                                    └──────────────────┘      │
+└────────────┼───────────────────┬──────────────────────┬───────────────────┘
+             │                   │                      │
+             │                   ▼                      ▼
 ┌────────────────┐    ┌───────────────────┐    ┌──────────────────────────────┐
 │  PostgreSQL    │    │  Redis 7          │    │  LLM Service (Adapter)       │
 │  15            │    │  Queue + Cache    │    │                              │
@@ -74,8 +77,8 @@ A scalable, AI-powered Gmail auto-responder built with Laravel, Next.js, and a s
 │                │    │                   │    │       │ (no LLM)  │          │
 │                │    │                   │    │       └───────────┘          │
 └────────────────┘    └───────────────────┘    └──────────────────────────────┘
-                                                            │
-                                                            │
+         │  ▲ HTTP GET/POST (JSON)
+         ▼  │
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                        NEXT.JS 15 DASHBOARD                                 │
 │                                                                             │
@@ -83,10 +86,13 @@ A scalable, AI-powered Gmail auto-responder built with Laravel, Next.js, and a s
 │   │ Thread List  │  │ Classifi-    │  │ Draft Editor │  │ Approve /    │    │
 │   │              │  │ cation View  │  │              │  │ Edit / Send  │    │
 │   └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                                                                             │
+│   Calls REST API: GET /api/threads, GET /api/drafts,                        │
+│   POST /api/drafts/:id/send, POST /api/drafts/:id/edit                      │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-PNG version: [docs/diagrams/architecture.png](docs/diagrams/architecture.png)
+![High-Level Architecture Diagram](docs/diagrams/architecture.png)
 
 **Data flow for a single incoming email:**
 
@@ -196,8 +202,8 @@ The assignment specifies MySQL or PostgreSQL. PostgreSQL was chosen for:
                              └────────────────────────────┘     │ created_at                     │
                                                                 │ updated_at                     │
                                                                 └────────────────────────────────┘
-                                                                         │
-                                                            1:N          │          1:1
+                                                                        │
+                                                            1:N         │          1:1
                                                       ┌─────────────────┴─────────────────┐
                                                       │                                   │
                                                       ▼                                   ▼
@@ -217,8 +223,6 @@ The assignment specifies MySQL or PostgreSQL. PostgreSQL was chosen for:
                                                                             └────────────────────────┘
 ```
 
-PNG version: [docs/diagrams/data-model.png](docs/diagrams/data-model.png)
-
 **Relationships:**
 
 - **users → gmail_accounts** - One user can connect multiple Gmail accounts (one-to-many).
@@ -237,8 +241,8 @@ Gmail's [`history.list`](https://developers.google.com/gmail/api/reference/rest/
 **`email_threads.gmail_thread_id` - unique constraint, idempotency key.**
 Google Pub/Sub guarantees [at-least-once delivery](https://cloud.google.com/pubsub/docs/subscriber#at-least-once-delivery), meaning the same notification can arrive more than once. We use `gmail_thread_id` as a unique constraint. When a duplicate notification arrives, PostgreSQL's `ON CONFLICT DO NOTHING` skips the insert silently. No duplicate classifications, no duplicate drafts.
 
-**`email_threads.classification` - enum with 5 values.**
-Starts as `pending` when the thread is first ingested. Updated to `interested`, `not_interested`, `meeting_request`, or `unclear` when the LLM job completes. The dashboard shows "Processing..." for `pending` threads rather than hiding them.
+**`email_threads.classification` - enum with 4 values.**
+Set to `interested`, `not_interested`, `meeting_request`, or `unclear` when the LLM classification job completes. Threads without a classification are still being processed and are hidden from the dashboard until classification finishes. This prevents users from seeing incomplete data.
 
 **`email_threads.confidence_score` - float between 0.0 and 1.0.**
 Returned by the LLM alongside the classification. Displayed on the dashboard so users can prioritize low-confidence classifications for manual review. A classification with confidence < 0.6 is flagged with a "Low confidence" badge.
@@ -386,8 +390,6 @@ Google's per-user rate limit is **250 quota units per user per second**. Our des
               └──────────────────────────────┘
 ```
 
-PNG version: [docs/diagrams/queue-architecture.png](docs/diagrams/queue-architecture.png)
-
 ### Why Three Separate Queues
 
 | Queue | Priority | Workers | Purpose |
@@ -473,12 +475,12 @@ Output:  Plain text reply body (typically 50–150 words)
 
 ### Stub Fallback
 
-When `LLM_PROVIDER=stub` in `.env` (or when neither Groq nor Ollama is reachable), the `StubLlmService` returns deterministic mock responses:
+When `LLM_PROVIDER=stub` in `.env` (or when neither Groq nor Ollama is reachable), the `StubLlmService` returns realistic, keyword-based responses:
 
-- Classification: always returns `interested` with confidence `0.85` and reasoning `"Stub classification - no LLM configured."`
-- Draft: returns a template reply based on the classification type (e.g. "Thank you for your interest. I'd be happy to discuss further...")
+- **Classification:** Scans the email subject and body for keywords to determine category. Sales-intent language ("interested", "pricing", "next steps") → `interested` (85–95% confidence). Scheduling language ("meeting", "call") → `meeting_request` (92%). Opt-out/automated signals ("unsubscribe", "noreply") → `not_interested` (88%). No strong signals → `unclear` (85%). The keyword priority order (interested first) ensures the highest-value leads are never miscategorized.
+- **Draft replies:** Content-seeded randomization produces unique replies per email — 5 greeting variants × 5 body variants × 5 closing variants per classification. The `crc32` hash of the email content selects the combination, so the same email always gets the same reply (deterministic for testing) but different emails get different replies (varied for demos).
 
-This lets the full pipeline run end-to-end during code review without any LLM running.
+This lets the full pipeline run end-to-end during code review with realistic, varied data — without any LLM running.
 
 ---
 
@@ -641,7 +643,7 @@ If this were a real product and I had more time:
 | Full Gmail sync (backfill) | The assignment focuses on new incoming emails, not migrating entire inbox history. The architecture supports backfill (call `history.list` with an older `historyId`) but building it doesn't demonstrate additional architectural thinking. |
 | Email compose UI (new threads) | Out of scope - the system generates and sends replies to existing threads, not new conversations. |
 | Multi-tenant SaaS auth (RBAC, billing) | The current auth model supports multiple users natively (each user registers and connects their own Gmail). True multi-tenancy with org-level accounts and billing is a product concern, not an architecture demo. |
-| WebSocket real-time updates | The dashboard uses polling (5-second interval via `setInterval` + `fetch`) for simplicity. The production upgrade would be Laravel Reverb (WebSocket server) broadcasting classification-complete events for instant UI updates. |
+| WebSocket real-time updates | The dashboard uses polling (5-second interval via `setInterval` + `fetch`) for simplicity. Backend polls Gmail every 15 seconds. The production upgrade would be Laravel Reverb (WebSocket server) broadcasting classification-complete events for instant UI updates. |
 | End-to-end encryption of email bodies | Tokens are encrypted at rest via Laravel's `encrypted` cast. Full E2E encryption of email content would require a client-side key management system - overkill for a take-home. |
 | SOC 2 compliance features | Audit logging, data retention policies, and role-based access controls are organizational processes, not code artifacts. The encrypted token storage and structured JSON logging are the technical foundation that a SOC 2 audit would build on. |
 
@@ -669,8 +671,8 @@ You do **not** need PHP, Composer, Node.js, PostgreSQL, or Redis installed local
 ### Step 1 - Clone the repository
 
 ```bash
-git clone https://github.com/<username>/gmail-autoresponder.git
-cd gmail-autoresponder
+git clone https://github.com/damienresume/gmail-auto-responder.git
+cd gmail-auto-responder
 ```
 
 ### Step 2 - Configure environment variables
@@ -721,7 +723,7 @@ This is for your local Docker database only - it never leaves your machine. Post
 - **GOOGLE_CLOUD_PROJECT_ID** - Your Google Cloud project ID (visible in the project selector dropdown)
 - **GOOGLE_PUBSUB_TOPIC** - Leave as `gmail-notifications`
 - **GOOGLE_PUBSUB_SUBSCRIPTION** - Leave as `gmail-push`
-- If you skip Pub/Sub setup, the app falls back to polling mode (checks Gmail every 60 seconds via a scheduled command).
+- If you skip Pub/Sub setup, the app falls back to polling mode (checks Gmail every 15 seconds via a scheduled command).
 
 ### Step 3 - Start the application
 

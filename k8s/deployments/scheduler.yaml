@@ -1,0 +1,25 @@
+# CronJob instead of Deployment ensures single-execution.
+# If scheduler ran inside the replicated API Deployment,
+# gmail:poll would execute N times (once per replica).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scheduler
+  namespace: gmail-autoresponder
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: scheduler
+              image: ghcr.io/example/gmail-autoresponder-app:latest
+              command: ["php", "artisan", "schedule:run"]
+              envFrom:
+                - configMapRef:
+                    name: app-config
+                - secretRef:
+                    name: app-secrets
+          restartPolicy: OnFailure

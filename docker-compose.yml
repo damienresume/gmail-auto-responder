@@ -135,6 +135,37 @@ services:
     command: php artisan horizon
 
   # --------------------------------------------------------------------------
+  # Laravel Scheduler - Runs periodic tasks (email polling)
+  # --------------------------------------------------------------------------
+  # WHY a separate container: The scheduler needs to run `artisan schedule:run`
+  # every minute. Running it inside the app container would require cron,
+  # which adds complexity. A dedicated container with `schedule:work` runs
+  # the scheduler in the foreground, which is simpler and logs to stdout.
+  #
+  # WHAT it does: Every 60 seconds, dispatches FetchNewEmailsJob for each
+  # active Gmail account. New emails are automatically picked up, classified
+  # by the LLM, and draft replies generated — no manual intervention needed.
+  # --------------------------------------------------------------------------
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: autoresponder-scheduler
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: .env
+    volumes:
+      - ./backend:/var/www/html:cached
+    working_dir: /var/www/html
+    # schedule:work runs the scheduler in the foreground, checking for
+    # due tasks every minute. This replaces the need for a cron daemon.
+    command: php artisan schedule:work
+
+  # --------------------------------------------------------------------------
   # Next.js 15 - Frontend dashboard
   # --------------------------------------------------------------------------
   # In development, runs next dev with hot module replacement.

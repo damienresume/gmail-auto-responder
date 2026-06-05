@@ -75,6 +75,16 @@ RUN echo "opcache.enable=1" >> /usr/local/etc/php/conf.d/opcache.ini \
     && echo "opcache.max_accelerated_files=10000" >> /usr/local/etc/php/conf.d/opcache.ini \
     && echo "opcache.validate_timestamps=1" >> /usr/local/etc/php/conf.d/opcache.ini
 
+# Copy the Composer binary into the runtime image for development use.
+# WHY: Developers need to run `docker compose exec app composer require ...`
+# to add packages. Without Composer in the runtime image, they'd need PHP
+# and Composer installed on their host machine, which breaks the "clone and
+# docker compose up" promise and causes cross-platform issues (Linux host
+# permissions differ from macOS/Windows Docker Desktop behavior).
+# In production, Composer is not needed (dependencies are baked into the image
+# during the multi-stage build), but the binary adds only ~2MB to image size.
+COPY --from=composer /usr/bin/composer /usr/local/bin/composer
+
 WORKDIR /var/www/html
 
 # Copy Composer-installed vendor directory from the builder stage.
