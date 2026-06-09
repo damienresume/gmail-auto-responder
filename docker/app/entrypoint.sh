@@ -13,7 +13,20 @@
 
 set -e
 
-# Ensure Laravel's writable directories exist and are owned by www-data.
+# --------------------------------------------------------------------------
+# Step 1: Environment variables
+# --------------------------------------------------------------------------
+# Docker Compose's env_file directive passes all variables from the host
+# .env as OS environment variables. Laravel's env() reads $_ENV and
+# $_SERVER before any .env file, so no .env file is needed inside the
+# container. This keeps the project clean — one .env at the project root,
+# nothing created in backend/.
+#
+# Works identically on Linux, macOS, and Windows Docker Desktop.
+
+# --------------------------------------------------------------------------
+# Step 2: Fix directory permissions for Laravel's writable directories
+# --------------------------------------------------------------------------
 # These directories must be writable for logging, caching, file uploads,
 # and compiled views. 775 allows group write without world access.
 #
@@ -32,13 +45,21 @@ for dir in \
     chmod -R 775 "$dir"
 done
 
-# Generate APP_KEY if not already set in the environment.
-# In production, APP_KEY should be set in .env before deployment.
-# For local development, auto-generating avoids a manual setup step.
-if [ -z "$APP_KEY" ]; then
-    if [ -f /var/www/html/artisan ]; then
-        su-exec www-data php artisan key:generate --force 2>/dev/null || true
-    fi
+# --------------------------------------------------------------------------
+# Step 3: Verify APP_KEY is set
+# --------------------------------------------------------------------------
+# APP_KEY is required for session encryption, CSRF tokens, and encrypted
+# model attributes (OAuth tokens). Without it, the app runs but sessions
+# and encryption silently fail.
+#
+# In development, the developer sets APP_KEY in the root .env file
+# (see README Step 4). Docker's env_file passes it to the container.
+# We log a warning if it's missing so the issue is immediately visible
+# in container logs rather than causing silent failures.
+if [ -z "$APP_KEY" ] || [ "$APP_KEY" = "base64:" ]; then
+    echo "WARNING: APP_KEY is not set. Run this command and add the output to your .env file:"
+    echo "  docker compose exec app php artisan key:generate --show"
+    echo ""
 fi
 
 # Drop privileges and execute the main command as www-data.

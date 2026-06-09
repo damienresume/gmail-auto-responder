@@ -770,9 +770,21 @@ This starts all services: Laravel API, Next.js frontend, PostgreSQL, Redis, Hori
 
 ```bash
 # Generate the encryption key used for session cookies and OAuth token encryption.
-# This MUST be done before the first run — without it, sessions and encrypted
-# fields will fail silently.
-docker compose exec app php artisan key:generate
+# This outputs the key — copy it and paste it into your .env file as APP_KEY=<key>.
+docker compose exec app php artisan key:generate --show
+```
+
+Copy the output (e.g. `base64:abc123...`) and set it in your `.env`:
+
+```
+APP_KEY=base64:abc123...
+```
+
+Then restart and run migrations:
+
+```bash
+# Restart so the container picks up the new APP_KEY.
+docker compose down && docker compose up -d
 
 # Create all database tables.
 docker compose exec app php artisan migrate
