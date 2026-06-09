@@ -1,0 +1,46 @@
+# ============================================================================
+# Cross-Platform Line Ending Configuration
+# ============================================================================
+# WHY this file exists:
+# Windows uses CRLF (\r\n) line endings, Linux/macOS use LF (\n).
+# Docker containers run Linux — shell scripts, .env files, and PHP files
+# MUST use LF or they fail with "bad interpreter" or parse errors.
+# This file ensures Git always checks out files with the correct endings
+# regardless of the developer's OS.
+# ============================================================================
+
+# Default: auto-detect. Git normalizes to LF in the repo, checks out
+# as the OS default (CRLF on Windows, LF on Linux/macOS).
+* text=auto
+
+# Force LF for files that run inside Linux containers.
+# Without this, a Windows developer's CRLF line endings would cause:
+#   - Shell scripts: "/bin/sh^M: bad interpreter" errors
+#   - .env files: PHP reads "VALUE\r" instead of "VALUE"
+#   - Dockerfiles: build failures from trailing \r in commands
+*.sh        text eol=lf
+*.bash      text eol=lf
+.env*       text eol=lf
+Dockerfile  text eol=lf
+docker-compose.yml text eol=lf
+
+# Force LF for all PHP files (they run inside the Linux container).
+*.php       text eol=lf
+
+# Force LF for frontend config files used in Docker builds.
+*.json      text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.css       text eol=lf
+
+# Binary files — do not modify line endings.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.eot       binary
