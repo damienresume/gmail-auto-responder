@@ -705,6 +705,15 @@ cd gmail-auto-responder
 cp .env.example .env
 ```
 
+> **Windows (Command Prompt):** `copy .env.example .env`
+> **Windows (PowerShell):** `Copy-Item .env.example .env`
+
+This is the only `.env` file you need. Docker Compose mounts it into all containers automatically, so Laravel, Horizon, and the scheduler all read from this single file. No copying, no syncing.
+
+> **After editing `.env`**, restart the containers to pick up changes:
+> `docker compose down && docker compose up -d`
+> This applies to all platforms (Linux, macOS, Windows).
+
 Open `.env` in your editor and set these values:
 
 **Database credentials (required):**

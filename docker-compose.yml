@@ -98,6 +98,12 @@ services:
       # Mount backend/ directory for live code reloading in development.
       # In production, remove this volume and rely on the built image.
       - ./backend:/var/www/html:cached
+      # Mount the root .env directly into the container so Laravel reads
+      # the same file Docker Compose uses. Single source of truth — no
+      # need to copy or sync a second .env into backend/.
+      # Works on Linux, macOS, and Windows (Docker Desktop handles
+      # path translation on all three platforms).
+      - ./.env:/var/www/html/.env
     working_dir: /var/www/html
     # Override the Dockerfile CMD for development: use artisan serve
     # instead of php-fpm, and enable OPcache timestamp validation
@@ -129,6 +135,7 @@ services:
     env_file: .env
     volumes:
       - ./backend:/var/www/html:cached
+      - ./.env:/var/www/html/.env
     working_dir: /var/www/html
     # Horizon manages its own worker processes internally.
     # --without-scheduler: the scheduler runs separately if needed.
@@ -160,6 +167,7 @@ services:
     env_file: .env
     volumes:
       - ./backend:/var/www/html:cached
+      - ./.env:/var/www/html/.env
     working_dir: /var/www/html
     # schedule:work runs the scheduler in the foreground, checking for
     # due tasks every minute. This replaces the need for a cron daemon.
